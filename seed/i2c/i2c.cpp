@@ -2,31 +2,32 @@
 
 using namespace daisy;
 
-// If the tests are successful, each daisy will blink. If the
-// tests fail, then one or both won't blink.
-// define either MASTER or SLAVE to set up each side
-#define SLAVE
-
 static DaisySeed seed;
 static I2CHandle i2c;
 
+// If the tests are successful, each daisy will blink. If the
+// tests fail, then one or both won't blink.
+// define either MASTER or SLAVE to set up each side
+#define MASTER
+// #define SLAVE
+
+#define SLAVE_ADDR 60
+
 #define LEN_BLOCK 4
-static uint8_t i2cDataBlock[] = 
+uint8_t i2cDataBlock[] = 
 {
     1, 3, 3, 7,
 };
+uint8_t i2cDataBlockRec[LEN_BLOCK];
 
 #define LEN_DMA 16
-static uint8_t DMA_BUFFER_MEM_SECTION i2cDataDma[] = {
+uint8_t DMA_BUFFER_MEM_SECTION i2cDataDma[] = {
     60, 64, 67, 71,
     60, 64, 67, 70,
     60, 63, 67, 70,
     60, 63, 66, 70,
 };
-
-static uint8_t DMA_BUFFER_MEM_SECTION i2cDataDmaRec[LEN_DMA];
-
-#define SLAVE_ADDR 60
+uint8_t DMA_BUFFER_MEM_SECTION i2cDataDmaRec[LEN_DMA];
 
 void blink() {
     for (int i = 0; i < 5; i++) {
@@ -34,14 +35,6 @@ void blink() {
         seed.DelayMs(100);
         seed.SetLed(false);
         seed.DelayMs(100);
-    }
-}
-
-void verify_reception(uint8_t* received, uint8_t* sent, size_t len) {
-    for (size_t i = 0; i < len; i++) 
-    {
-        if (received[i] != sent[i]) 
-            while(1);
     }
 }
 
@@ -70,9 +63,11 @@ int main(void)
         if (i2c.Init(i2c_conf) == I2CHandle::Result::ERR)
             while(1);
 
+        // blocking test
         while (i2c.TransmitBlocking(SLAVE_ADDR, i2cDataBlock, LEN_BLOCK, 1000) 
             == I2CHandle::Result::ERR);
 
+        // dma test
         if (i2c.TransmitDma(SLAVE_ADDR, i2cDataDma, LEN_DMA, callback, &succeeded) 
             == I2CHandle::Result::ERR)
             while(1);
@@ -87,6 +82,7 @@ int main(void)
 
         uint8_t i2cDataBlockRec[LEN_BLOCK];
 
+        // blocking test
         i2c_conf.address = SLAVE_ADDR;
         i2c_conf.mode = I2CHandle::Config::Mode::I2C_SLAVE;
         if (i2c.Init(i2c_conf) == I2CHandle::Result::ERR)
@@ -95,22 +91,28 @@ int main(void)
         while (i2c.ReceiveBlocking(0, i2cDataBlockRec, LEN_BLOCK, 1000)
             == I2CHandle::Result::ERR);
 
+        // dma test
         I2CHandle::Result result = i2c.ReceiveDma(0, i2cDataDmaRec, LEN_DMA, callback, &succeeded);
         if (result == I2CHandle::Result::ERR) 
             while(1);
 
-        verify_reception(i2cDataBlockRec, i2cDataBlock, LEN_BLOCK);
         while(!succeeded) {};
+
+        // verifying both transmissions
+        for (size_t i = 0; i < LEN_BLOCK; i++) 
+        {
+            if (i2cDataBlockRec[i] != i2cDataBlock[i]) 
+                while(1);
+        }
         for (int i = 0; i < LEN_DMA; i++)
         {
-            if (i2cDataDmaRec[i] != i2cDataDma[i]) 
-            {
+            if (i2cDataDmaRec[i] != i2cDataDma[i])
                 while(1);
-            }
         }
         
     #endif
 
+    // Success if program reaches here
     blink();
 
     while(1);
