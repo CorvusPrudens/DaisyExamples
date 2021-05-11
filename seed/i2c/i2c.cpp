@@ -4,10 +4,14 @@ using namespace daisy;
 
 static DaisySeed seed;
 static I2CHandle i2c;
+static I2CHandle::Config i2c_conf;
 
 // If the tests are successful, each daisy will blink. If the
 // tests fail, then one or both won't blink.
-// define either MASTER or SLAVE to set up each side
+// No need to worry about initial syncing -- they'll attempt to
+// communicate until a successful transaction is made.
+// define either MASTER or SLAVE to set up each side.
+
 // #define MASTER
 #define SLAVE
 
@@ -32,22 +36,10 @@ static uint8_t i2cDataBlockRec[LEN_BLOCK];
 
 #define LEN_DMA 16
 static uint8_t i2cDataDmaTemplate[] = {
-    60,
-    64,
-    67,
-    71,
-    60,
-    64,
-    67,
-    70,
-    60,
-    63,
-    67,
-    70,
-    60,
-    63,
-    66,
-    70,
+    60, 64, 67, 71,
+    60, 64, 67, 70,
+    60, 63, 67, 70,
+    60, 63, 66, 70,
 };
 static uint8_t DMA_BUFFER_MEM_SECTION i2cDataDma[LEN_DMA];
 
@@ -70,7 +62,7 @@ void i2cCallback(void* context, I2CHandle::Result result)
     }
 }
 
-void master_test(I2CHandle::Config i2c_conf)
+void master_test()
 {
     switch(test_state)
     {
@@ -81,6 +73,11 @@ void master_test(I2CHandle::Config i2c_conf)
                 i2cDataDma[i] = i2cDataDmaTemplate[i];
             }
 
+            // Full configuration for clarity
+            i2c_conf.periph         = I2CHandle::Config::Peripheral::I2C_1;
+            i2c_conf.speed          = I2CHandle::Config::Speed::I2C_100KHZ;
+            i2c_conf.pin_config.scl = seed.GetPin(11);
+            i2c_conf.pin_config.sda = seed.GetPin(12);
             i2c_conf.mode = I2CHandle::Config::Mode::I2C_MASTER;
             if(i2c.Init(i2c_conf) == I2CHandle::Result::ERR)
                 while(1) {}
@@ -117,7 +114,7 @@ void master_test(I2CHandle::Config i2c_conf)
     }
 }
 
-void slave_test(I2CHandle::Config i2c_conf)
+void slave_test()
 {
     switch(test_state)
     {
@@ -129,7 +126,10 @@ void slave_test(I2CHandle::Config i2c_conf)
                 i2cDataDma[i] = 0;
             }
 
-            // blocking test
+            i2c_conf.periph         = I2CHandle::Config::Peripheral::I2C_1;
+            i2c_conf.speed          = I2CHandle::Config::Speed::I2C_100KHZ;
+            i2c_conf.pin_config.scl = seed.GetPin(11);
+            i2c_conf.pin_config.sda = seed.GetPin(12);
             i2c_conf.address = SLAVE_ADDR;
             i2c_conf.mode    = I2CHandle::Config::Mode::I2C_SLAVE;
             if(i2c.Init(i2c_conf) == I2CHandle::Result::ERR)
@@ -182,17 +182,12 @@ int main(void)
     seed.Configure();
     seed.Init();
 
-    I2CHandle::Config i2c_conf;
-    i2c_conf.periph         = I2CHandle::Config::Peripheral::I2C_1;
-    i2c_conf.speed          = I2CHandle::Config::Speed::I2C_100KHZ;
-    i2c_conf.pin_config.scl = seed.GetPin(11);
-    i2c_conf.pin_config.sda = seed.GetPin(12);
-
-#ifdef MASTER
-    while(1)
-        master_test(i2c_conf);
-#else
-    while(1)
-        slave_test(i2c_conf);
-#endif
+    while (1)
+    {
+        #ifdef MASTER
+            master_test();
+        #else
+            slave_test();
+        #endif
+    }
 }
