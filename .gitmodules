@@ -6,3 +6,7 @@
 	path = DaisySP
 	url = https://github.com/electro-smith/DaisySP
 	branch = master
+[submodule "DaisySP-LGPL"]
+	path = DaisySP-LGPL
+	url = https://github.com/electro-smith/DaisySP-LGPL
+	branch = pvs

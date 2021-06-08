@@ -24,7 +24,9 @@
                 "${workspaceFolder}/DaisySP/tests/util",
                 "${workspaceFolder}/DaisySP/modules",
                 "${workspaceFolder}/DaisySP/Source",
-                "${workspaceFolder}/DaisySP/tests/util"
+                "${workspaceFolder}/DaisySP/tests/util",
+                "${workspaceFolder}/DaisySP-LGPL",
+                "${workspaceFolder}/DaisySP-LGPL/Source"
             ],
             "defines": [
                 "CORE_CM7",
