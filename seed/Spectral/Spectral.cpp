@@ -1,13 +1,28 @@
 #include "daisy_seed.h"
 #include "daicsp.h"
 
+/** This program demonstrates basic use of the spectral modules.
+ *  If an error occurs during initialization of either the
+ *  `SpectralAnalyzer` or the `PhaseVocoder`, the program
+ *  will stall and not produce any output. The error can
+ *  be inspected with debugging.
+ * 
+ *  Currently, sliding synthesis is not supported, so the
+ *  Smallest valid fftsize is 256. The maximum size, limited
+ *  by memory, is 4096. fftsize must be a power of 2 due to
+ *  shy_fft.
+ * 
+ *  An unmodified wave is generated and written to channel zero.
+ *  The spectrally manipulated signal is written to channel one.
+ */
+
 using namespace daisy;
 using namespace daicsp;
 
 static DaisySeed hw;
 
 static SpectralAnalyzer analyzer;
-PhaseVocoder vocoder;
+static PhaseVocoder vocoder;
 
 static float sampleRate;
 float samples[64];
@@ -24,16 +39,18 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 {
 
 	for (size_t i = 0; i < size; i++) {
-		samples[i] = SimpleWave(WAVE::SIN, 1000, sampleRate);
+		samples[i] = SimpleWave(WAVE::TRI, 1000, sampleRate) * 0.75;
 	}
 
 	auto fsig = analyzer.Process(samples, size);
+	// NOTE -- auto just makes this easy, but the proper type is of course valid:
+	// SpectralBuffer fsig = analyzer.Process(samples, size);
 
 	// spectral effects here
 
 	auto output = vocoder.Process(fsig, size);
 
-	// Outputting input wave and resynthesized wave on channels 1 and 2
+	// Outputting input wave and resynthesized wave on channels 0 and 1
 	for (size_t i = 0; i < size; i++) {
 		out[0][i] = samples[i];
 		out[1][i] = output[i];
@@ -48,21 +65,26 @@ int main(void)
 	sampleRate = hw.AudioSampleRate();
 	size_t block = hw.AudioBlockSize();
 
-	// TODO -- sliding configuration causes a hard fault
-	int fftsize = 256;
+	int fftsize = 1024;
 	int overlap = fftsize / 4;
 	int winsize = fftsize;
 
 	analyzer.Init(fftsize, overlap, winsize, SPECTRAL_WINDOW::HAMMING, sampleRate, block);
+	if (analyzer.GetStatus() != SpectralAnalyzer::STATUS::OK)
+		while (1);
+	
 	vocoder.Init(analyzer.GetFsig(), sampleRate, block);
+	if (vocoder.GetStatus() != PhaseVocoder::STATUS::OK)
+		while (1);
 	
 	hw.StartAudio(AudioCallback);
 	while(1) {}
 }
 
-// note -- t gets big after a while XD
+// NOTE -- t gets big after a while, 
+// so it's not particularly reliable for long tests.
 float SimpleWave(WAVE wave, float frequency, float sampleRate) {
-	static int t = 0;
+	static unsigned int t = 0;
 	float out = 0;
 	switch (wave) {
 		case WAVE::SIN:
