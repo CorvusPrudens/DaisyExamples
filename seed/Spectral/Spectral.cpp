@@ -22,6 +22,9 @@ using namespace daicsp;
 static DaisySeed hw;
 
 #define FFTSIZE 4096
+// Note divided by three -- this gives the maximum
+// performance overhead with mostly negligeable 
+// distortion
 #define OVERLAP FFTSIZE / 3
 #define WINDOW_SIZE FFTSIZE
 
@@ -40,22 +43,31 @@ enum WAVE {
 	RECT,
 };
 
+size_t delay = 0;
+
 float SimpleWave(WAVE wave, float frequency, float sampleRate);
 
 void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
 {
-	for (size_t i = 0; i < size; i++) {
-		float sample = SimpleWave(WAVE::TRI, 440, sampleRate) * 0.75;
-		analyzer.Sample(sample);
-		out[0][i] = sample;
-		out[1][i] = vocoder.Sample();
+	if (delay++ > 4)
+	{
+		for (size_t i = 0; i < size; i++) {
+			// Feel free to feed in this oscillator if you don't have 
+			// external audio set up. It will slow down the fft, though.
+			// float sample = SimpleWave(WAVE::TRI, 440, sampleRate) * 0.75;
+			float sample = in[0][i];
+			analyzer.Sample(sample);
+			out[1][i] = sample;
+			out[0][i] = vocoder.Sample();
+		}
 	}
+	
 }
 
 int main(void)
 {
 	hw.Configure();
-	hw.Init();
+	hw.Init(true);
 
 	sampleRate = hw.AudioSampleRate();
 	size_t block = hw.AudioBlockSize();
@@ -63,19 +75,22 @@ int main(void)
 	analyzer.Init(SPECTRAL_WINDOW::HAMMING, sampleRate, block);
 	analyzer.HaltOnError();
 
-	blur.Init(analyzer.GetFsig(), 0.25, blurBuff, BLURBUFF_SIZE, sampleRate, block);
+	blur.Init(analyzer.GetFsig(), 0.4, blurBuff, BLURBUFF_SIZE, sampleRate, block);
 	blur.HaltOnError();
 	
-	vocoder.Init(analyzer.GetFsig(), sampleRate, block);
+	vocoder.Init(blur.GetFsig(), sampleRate, block);
 	vocoder.HaltOnError();
 
 	hw.StartAudio(AudioCallback);
+	bool toggle = false;
 	while (1)
 	{
 		// blocks until the input is filled
 		auto fsig = analyzer.Process();
 		auto fsig2 = blur.Process(fsig);
 		vocoder.Process(fsig2);
+		hw.SetLed(toggle);
+		toggle = !toggle;
 	}
 }
 
