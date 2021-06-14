@@ -2,10 +2,9 @@
 #include "daicsp.h"
 
 /** This program demonstrates basic use of the spectral modules.
- *  If an error occurs during initialization of either the
- *  `SpectralAnalyzer` or the `PhaseVocoder`, the program
- *  will stall and not produce any output. The error can
- *  be inspected with debugging.
+ *  If an error occurs during initialization of any of the
+ *  classes, the program will stall and not produce any
+ *  output. The error can be inspected with debugging.
  * 
  *  Currently, sliding synthesis is not supported, so the
  *  Smallest valid fftsize is 256. The maximum size, limited
@@ -14,6 +13,8 @@
  * 
  *  An unmodified wave is generated and written to channel 0.
  *  The spectrally manipulated signal is written to channel 1.
+ *  The spectral manipulation can be set with the `processing`
+ *  variable;
  */
 
 using namespace daisy;
@@ -31,7 +32,17 @@ static DaisySeed hw;
 static SpectralAnalyzerFifo<FFTSIZE, OVERLAP, WINDOW_SIZE> analyzer;
 static PhaseVocoderFifo<FFTSIZE, OVERLAP, WINDOW_SIZE> vocoder;
 static SpectralBlurFifo<FFTSIZE, OVERLAP, WINDOW_SIZE> blur;
+static SpectralFreezeFifo<FFTSIZE, OVERLAP, WINDOW_SIZE> freeze;
 
+enum PROCESSING {
+	BLUR = 0,
+	FREEZE,
+};
+
+// Change to swap between processing modes
+PROCESSING processing = PROCESSING::FREEZE;
+
+// Avout 2 seconds of delay
 #define BLURBUFF_SIZE 1024*512
 float DSY_SDRAM_BSS blurBuff[BLURBUFF_SIZE];
 
@@ -43,54 +54,70 @@ enum WAVE {
 	RECT,
 };
 
-size_t delay = 0;
-
 float SimpleWave(WAVE wave, float frequency, float sampleRate);
 
 void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
 {
-	if (delay++ > 4)
-	{
-		for (size_t i = 0; i < size; i++) {
-			// Feel free to feed in this oscillator if you don't have 
-			// external audio set up. It will slow down the fft, though.
-			// float sample = SimpleWave(WAVE::TRI, 440, sampleRate) * 0.75;
-			float sample = in[0][i];
-			analyzer.Sample(sample);
-			out[1][i] = sample;
-			out[0][i] = vocoder.Sample();
+	for (size_t i = 0; i < size; i++) {
+
+		if (processing == PROCESSING::FREEZE)
+		{
+			float s = fabs(SimpleWave(WAVE::SIN, 1.5, sampleRate)) * 1.5;
+			freeze.SetAmplitude(s);
+			freeze.SetFrequency(s);
 		}
+
+		float sample = in[0][i];
+
+		analyzer.Sample(sample);
+
+		out[1][i] = sample;
+		out[0][i] = vocoder.Sample();
+
 	}
-	
 }
 
 int main(void)
 {
 	hw.Configure();
+	// Boosted for performance
 	hw.Init(true);
 
 	sampleRate = hw.AudioSampleRate();
-	size_t block = hw.AudioBlockSize();
 
-	analyzer.Init(SPECTRAL_WINDOW::HAMMING, sampleRate, block);
+	analyzer.Init(SPECTRAL_WINDOW::HAMMING, sampleRate);
 	analyzer.HaltOnError();
 
-	blur.Init(analyzer.GetFsig(), 0.4, blurBuff, BLURBUFF_SIZE, sampleRate, block);
+	blur.Init(analyzer.GetFsig(), 0.4, blurBuff, BLURBUFF_SIZE, sampleRate);
 	blur.HaltOnError();
+
+	freeze.Init(analyzer.GetFsig(), 1, 1, sampleRate);
+	freeze.HaltOnError();
 	
-	vocoder.Init(blur.GetFsig(), sampleRate, block);
+	// NOTE -- blur and freeze fsigs will be equivalent in this case,
+	// so either can be used to initialize the vocoder
+	vocoder.Init(blur.GetFsig(), sampleRate);
 	vocoder.HaltOnError();
 
 	hw.StartAudio(AudioCallback);
-	bool toggle = false;
 	while (1)
 	{
 		// blocks until the input is filled
 		auto fsig = analyzer.Process();
-		auto fsig2 = blur.Process(fsig);
+		auto fsig2 = fsig;
+
+		switch (processing)
+		{
+			case PROCESSING::BLUR:
+				fsig2 = blur.Process(fsig);
+				break;
+			default:
+			case PROCESSING::FREEZE:
+				fsig2 = freeze.Process(fsig);
+				break;
+		}
+
 		vocoder.Process(fsig2);
-		hw.SetLed(toggle);
-		toggle = !toggle;
 	}
 }
 

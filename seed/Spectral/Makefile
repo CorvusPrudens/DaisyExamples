@@ -9,7 +9,7 @@ LIBDAISY_DIR = ../../libdaisy
 # DAISYSP_DIR = ../../DaisySP
 DAICSP_DIR = ../../DaisySP-LGPL
 
-OPT = -O0
+OPT = 
 
 # Core location, and generic Makefile.
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
