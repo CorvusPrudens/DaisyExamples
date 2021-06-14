@@ -22,6 +22,13 @@ using namespace daicsp;
 
 static DaisySeed hw;
 
+
+/** Current FFTSIZE performance:
+ *	\param SpectralBlur - Can only manage at 4096 with a maximum delay time of 0.4s
+ *  \param SpectralFreeze - Good down to 512, artefacts at 256
+ *  \param SpectralScale - Can only manage at 4096 in mode 0 (no formant preservation).
+ *  True envelope mode is a bit scary, and I think it's bugged.
+ */
 #define FFTSIZE 4096
 // Note divided by three -- this gives the maximum
 // performance overhead with mostly negligeable 
@@ -33,14 +40,16 @@ static SpectralAnalyzerFifo<FFTSIZE, OVERLAP, WINDOW_SIZE> analyzer;
 static PhaseVocoderFifo<FFTSIZE, OVERLAP, WINDOW_SIZE> vocoder;
 static SpectralBlurFifo<FFTSIZE, OVERLAP, WINDOW_SIZE> blur;
 static SpectralFreezeFifo<FFTSIZE, OVERLAP, WINDOW_SIZE> freeze;
+static SpectralScale<FFTSIZE, OVERLAP, WINDOW_SIZE> scale;
 
 enum PROCESSING {
 	BLUR = 0,
 	FREEZE,
+	SCALE,
 };
 
 // Change to swap between processing modes
-PROCESSING processing = PROCESSING::FREEZE;
+PROCESSING processing = PROCESSING::SCALE;
 
 // Avout 2 seconds of delay
 #define BLURBUFF_SIZE 1024*512
@@ -60,11 +69,23 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 {
 	for (size_t i = 0; i < size; i++) {
 
-		if (processing == PROCESSING::FREEZE)
+		switch (processing)
 		{
-			float s = fabs(SimpleWave(WAVE::SIN, 1.5, sampleRate)) * 1.5;
-			freeze.SetAmplitude(s);
-			freeze.SetFrequency(s);
+			case PROCESSING::FREEZE:
+				{
+					float s = fabs(SimpleWave(WAVE::SIN, 1.5, sampleRate)) * 1.5;
+					freeze.SetAmplitude(s);
+					freeze.SetFrequency(s);
+				}
+				break;
+			case PROCESSING::SCALE:
+				{
+					float s = 1 + SimpleWave(WAVE::SIN, 0.25, sampleRate) * 0.05;
+					scale.SetScale(s);
+				}
+				break;
+			default:
+				break;
 		}
 
 		float sample = in[0][i];
@@ -93,9 +114,12 @@ int main(void)
 
 	freeze.Init(analyzer.GetFsig(), 1, 1, sampleRate);
 	freeze.HaltOnError();
+
+	scale.Init(analyzer.GetFsig(), 1, sampleRate, FORMANT::NONE, 1, 80);
+	scale.HaltOnError();
 	
-	// NOTE -- blur and freeze fsigs will be equivalent in this case,
-	// so either can be used to initialize the vocoder
+	// NOTE -- the effect fsigs will be equivalent in this case,
+	// so any can be used to initialize the vocoder
 	vocoder.Init(blur.GetFsig(), sampleRate);
 	vocoder.HaltOnError();
 
@@ -111,9 +135,13 @@ int main(void)
 			case PROCESSING::BLUR:
 				fsig2 = blur.Process(fsig);
 				break;
-			default:
 			case PROCESSING::FREEZE:
 				fsig2 = freeze.Process(fsig);
+				break;
+			case PROCESSING::SCALE:
+				fsig2 = scale.Process(fsig);
+				break;
+			default:
 				break;
 		}
 
