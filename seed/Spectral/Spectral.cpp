@@ -1,4 +1,10 @@
 #include "daisy_seed.h"
+
+// if you'd like to reduce the memory footprint of the
+// spectral classes, simply define the maximum fftsize
+// with some power of two at 4096 or below before daicsp.h:
+// #define __FFT_SIZE__ 2048
+
 #include "daicsp.h"
 
 /** This program demonstrates basic use of the spectral modules.
@@ -36,20 +42,22 @@ static DaisySeed hw;
 #define OVERLAP FFTSIZE / 3
 #define WINDOW_SIZE FFTSIZE
 
-static SpectralAnalyzerFifo<FFTSIZE, OVERLAP, WINDOW_SIZE> analyzer;
-static PhaseVocoderFifo<FFTSIZE, OVERLAP, WINDOW_SIZE> vocoder;
-static SpectralBlurFifo<FFTSIZE, OVERLAP, WINDOW_SIZE> blur;
-static SpectralFreezeFifo<FFTSIZE, OVERLAP, WINDOW_SIZE> freeze;
-static SpectralScale<FFTSIZE, OVERLAP, WINDOW_SIZE> scale;
+static SpectralAnalyzer analyzer;
+static PhaseVocoder vocoder;
+static SpectralBlur blur;
+static SpectralFreeze freeze;
+static SpectralScale scale;
+// static SpectralWarp<FFTSIZE, OVERLAP, WINDOW_SIZE> warp;
 
 enum PROCESSING {
 	BLUR = 0,
 	FREEZE,
 	SCALE,
+	WARP,
 };
 
 // Change to swap between processing modes
-PROCESSING processing = PROCESSING::SCALE;
+PROCESSING processing = PROCESSING::BLUR;
 
 // Avout 2 seconds of delay
 #define BLURBUFF_SIZE 1024*512
@@ -90,10 +98,10 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 
 		float sample = in[0][i];
 
-		analyzer.Sample(sample);
+		analyzer.Process(sample);
 
 		out[1][i] = sample;
-		out[0][i] = vocoder.Sample();
+		out[0][i] = vocoder.Process();
 
 	}
 }
@@ -106,10 +114,10 @@ int main(void)
 
 	sampleRate = hw.AudioSampleRate();
 
-	analyzer.Init(SPECTRAL_WINDOW::HAMMING, sampleRate);
+	analyzer.Init(FFTSIZE, OVERLAP, WINDOW_SIZE, SPECTRAL_WINDOW::HAMMING, sampleRate);
 	analyzer.HaltOnError();
 
-	blur.Init(analyzer.GetFsig(), 0.4, blurBuff, BLURBUFF_SIZE, sampleRate);
+	blur.Init(analyzer.GetFsig(), 0.3, blurBuff, BLURBUFF_SIZE, sampleRate);
 	blur.HaltOnError();
 
 	freeze.Init(analyzer.GetFsig(), 1, 1, sampleRate);
@@ -117,6 +125,9 @@ int main(void)
 
 	scale.Init(analyzer.GetFsig(), 1, sampleRate, FORMANT::NONE, 1, 80);
 	scale.HaltOnError();
+
+	// warp.Init(analyzer.GetFsig(), 1, 500, sampleRate);
+	// warp.HaltOnError();
 	
 	// NOTE -- the effect fsigs will be equivalent in this case,
 	// so any can be used to initialize the vocoder
@@ -126,26 +137,28 @@ int main(void)
 	hw.StartAudio(AudioCallback);
 	while (1)
 	{
-		// blocks until the input is filled
-		auto fsig = analyzer.Process();
+		auto fsig = analyzer.ParallelProcess();
 		auto fsig2 = fsig;
 
 		switch (processing)
 		{
 			case PROCESSING::BLUR:
-				fsig2 = blur.Process(fsig);
+				fsig2 = blur.ParallelProcess(fsig);
 				break;
 			case PROCESSING::FREEZE:
-				fsig2 = freeze.Process(fsig);
+				fsig2 = freeze.ParallelProcess(fsig);
 				break;
 			case PROCESSING::SCALE:
-				fsig2 = scale.Process(fsig);
+				fsig2 = scale.ParallelProcess(fsig);
 				break;
+			// case PROCESSING::WARP:
+			// 	fsig2 = warp.ParallelProcess(fsig);
+			// 	break;
 			default:
 				break;
 		}
 
-		vocoder.Process(fsig2);
+		vocoder.ParallelProcess(fsig2);
 	}
 }
 

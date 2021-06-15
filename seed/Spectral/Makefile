@@ -11,6 +11,10 @@ DAICSP_DIR = ../../DaisySP-LGPL
 
 OPT = 
 
+C_INCLUDES += -I../../DaisySP-LGPL/Source
+LIBS += -ldaicsp
+LIBDIR += -L../../DaisySP-LGPL/build
+
 # Core location, and generic Makefile.
 SYSTEM_FILES_DIR = $(LIBDAISY_DIR)/core
 include $(SYSTEM_FILES_DIR)/Makefile
