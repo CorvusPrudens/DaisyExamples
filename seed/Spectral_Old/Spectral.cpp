@@ -44,17 +44,17 @@ static DaisySeed hw;
 
 static SpectralAnalyzer analyzer;
 static PhaseVocoder vocoder;
-static SpectralBlur blur;
-static SpectralFreeze freeze;
-static SpectralScale scale;
-static DsyFFT fft;
+// static SpectralBlur blur;
+// static SpectralFreeze freeze;
+// static SpectralScale scale;
+// static DsyFFT fft;
 
-static float analyzer_audio_left[daicsp::kFFTMaxFrames];
-// static float DSY_SDRAM_BSS analyzer_audio_right[daicsp::kFFTMaxFrames];
-static float               analbuff_l_[daicsp::kFFTMaxFloats];
-static float               analbuffout_l_[daicsp::kFFTMaxFloats];
-static float               analwin_l_[daicsp::kFFTMaxFloats];
-static float               analhist_l_[daicsp::kFFTMaxFloats];
+// static float analyzer_audio_left[daicsp::kFFTMaxFrames];
+// // static float DSY_SDRAM_BSS analyzer_audio_right[daicsp::kFFTMaxFrames];
+// static float               analbuff_l_[daicsp::kFFTMaxFloats];
+// static float               analbuffout_l_[daicsp::kFFTMaxFloats];
+// static float               analwin_l_[daicsp::kFFTMaxFloats];
+// static float               analhist_l_[daicsp::kFFTMaxFloats];
 // static float               analbuff_r_[daicsp::kFFTMaxFloats];
 // static float               analbuffout_r_[daicsp::kFFTMaxFloats];
 // static float DSY_SDRAM_BSS analwin_r_[daicsp::kFFTMaxFloats];
@@ -88,54 +88,70 @@ float SimpleWave(WAVE wave, float frequency, float sampleRate);
 
 void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
 {
-	for (size_t i = 0; i < size; i++) {
 
-		// switch (processing)
-		// {
-		// 	case PROCESSING::FREEZE:
-		// 		{
-		// 			float s = fabs(SimpleWave(WAVE::SIN, 1.5, sampleRate)) * 1.5;
-		// 			freeze.SetAmplitude(s);
-		// 			freeze.SetFrequency(s);
-		// 		}
-		// 		break;
-		// 	case PROCESSING::SCALE:
-		// 		{
-		// 			float s = 1 + SimpleWave(WAVE::SIN, 0.25, sampleRate) * 0.05;
-		// 			scale.SetScale(s);
-		// 		}
-		// 		break;
-		// 	default:
-		// 		break;
-		// }
-
-		float sample = SimpleWave(WAVE::SIN, 440, sampleRate);
-
-		auto& fsig = analyzer.Process(sample);
-		auto* fsig2 = &fsig;
-
-		// switch (processing)
-		// {
-		// 	case PROCESSING::BLUR:
-		// 		fsig2 = &blur.ParallelProcess(fsig);
-		// 		break;
-		// 	case PROCESSING::FREEZE:
-		// 		fsig2 = &freeze.ParallelProcess(fsig);
-		// 		break;
-		// 	case PROCESSING::SCALE:
-		// 		fsig2 = &scale.ParallelProcess(fsig);
-		// 		break;
-		// 	// case PROCESSING::WARP:
-		// 	// 	fsig2 = warp.ParallelProcess(fsig);
-		// 	// 	break;
-		// 	default:
-		// 		break;
-		// }
-
-		out[0][i] = sample;
-		out[1][i] = vocoder.Process(*fsig2);
-
+	float data[size];
+	for (size_t i = 0; i < size; i++)
+	{
+		data[i] = SimpleWave(WAVE::SIN, 440, sampleRate);
 	}
+
+	auto& fsig = analyzer.Process(data, size);
+	float* spectral_out = vocoder.Process(fsig, size);
+
+	for (size_t i = 0; i < size; i++)
+	{
+		out[0][i] = data[i];
+		out[1][i] = spectral_out[i];
+	}
+
+	// for (size_t i = 0; i < size; i++) {
+
+	// 	// switch (processing)
+	// 	// {
+	// 	// 	case PROCESSING::FREEZE:
+	// 	// 		{
+	// 	// 			float s = fabs(SimpleWave(WAVE::SIN, 1.5, sampleRate)) * 1.5;
+	// 	// 			freeze.SetAmplitude(s);
+	// 	// 			freeze.SetFrequency(s);
+	// 	// 		}
+	// 	// 		break;
+	// 	// 	case PROCESSING::SCALE:
+	// 	// 		{
+	// 	// 			float s = 1 + SimpleWave(WAVE::SIN, 0.25, sampleRate) * 0.05;
+	// 	// 			scale.SetScale(s);
+	// 	// 		}
+	// 	// 		break;
+	// 	// 	default:
+	// 	// 		break;
+	// 	// }
+
+	// 	float sample = SimpleWave(WAVE::SIN, 440, sampleRate);
+
+	// 	auto& fsig = analyzer.Process(sample);
+	// 	auto* fsig2 = &fsig;
+
+	// 	// switch (processing)
+	// 	// {
+	// 	// 	case PROCESSING::BLUR:
+	// 	// 		fsig2 = &blur.ParallelProcess(fsig);
+	// 	// 		break;
+	// 	// 	case PROCESSING::FREEZE:
+	// 	// 		fsig2 = &freeze.ParallelProcess(fsig);
+	// 	// 		break;
+	// 	// 	case PROCESSING::SCALE:
+	// 	// 		fsig2 = &scale.ParallelProcess(fsig);
+	// 	// 		break;
+	// 	// 	// case PROCESSING::WARP:
+	// 	// 	// 	fsig2 = warp.ParallelProcess(fsig);
+	// 	// 	// 	break;
+	// 	// 	default:
+	// 	// 		break;
+	// 	// }
+
+	// 	out[0][i] = sample;
+	// 	out[1][i] = vocoder.Process(*fsig2);
+
+	// }
 }
 
 int main(void)
@@ -159,32 +175,25 @@ int main(void)
 			WINDOW_SIZE,
 			SPECTRAL_WINDOW::HAMMING, 
 			sampleRate,
-			blockSize,
-			&fft,
-			analyzer_audio_left,
-			analbuff_l_,
-			analbuffout_l_,
-			analwin_l_,
-			analhist_l_
+			blockSize
 	);
-	analyzer.HaltOnError();
 
 	// blur.Init(analyzer.GetFsig(), 0.3, blurBuff, BLURBUFF_SIZE, sampleRate);
 	// blur.HaltOnError();
 
-	freeze.Init(analyzer.GetFsig(), 1, 1, sampleRate);
-	freeze.HaltOnError();
+	// freeze.Init(analyzer.GetFsig(), 1, 1, sampleRate);
+	// freeze.HaltOnError();
 
-	scale.Init(analyzer.GetFsig(), 1, sampleRate, FORMANT::NONE, 1, 80);
-	scale.HaltOnError();
+	// scale.Init(analyzer.GetFsig(), 1, sampleRate, FORMANT::NONE, 1, 80);
+	// scale.HaltOnError();
 
 	// warp.Init(analyzer.GetFsig(), 1, 500, sampleRate);
 	// warp.HaltOnError();
 	
 	// NOTE -- the effect fsigs will be equivalent in this case,
 	// so any can be used to initialize the vocoder
-	vocoder.Init(scale.GetFsig(), sampleRate, blockSize, &fft);
-	vocoder.HaltOnError();
+	vocoder.Init(analyzer.GetFsig(), sampleRate, blockSize);
+	// vocoder.HaltOnError();
 
 	hw.StartAudio(AudioCallback);
 	while (1)

@@ -1,0 +1,13 @@
+{
+    "files.associations": {
+        "cmath": "cpp",
+        "random": "cpp",
+        "*.tcc": "cpp",
+        "algorithm": "cpp",
+        "memory": "cpp",
+        "iosfwd": "cpp",
+        "numeric": "cpp",
+        "ostream": "cpp",
+        "streambuf": "cpp"
+    }
+}
