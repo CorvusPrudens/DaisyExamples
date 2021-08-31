@@ -1,4 +1,5 @@
 #include "daisy_seed.h"
+#include <string.h>
 
 // if you'd like to reduce the memory footprint of the
 // spectral classes, simply define the maximum fftsize
@@ -35,11 +36,11 @@ static DaisySeed hw;
  *  \param SpectralScale - Can only manage at 4096 in mode 0 (no formant preservation).
  *  True envelope mode is a bit scary, and I think it's bugged.
  */
-#define FFTSIZE 4096
+#define FFTSIZE 512
 // Note divided by three -- this gives the maximum
 // performance overhead with mostly negligeable 
 // distortion
-#define OVERLAP FFTSIZE / 3
+#define OVERLAP FFTSIZE / 4
 #define WINDOW_SIZE FFTSIZE
 
 static SpectralAnalyzer analyzer;
@@ -86,13 +87,34 @@ enum WAVE {
 
 float SimpleWave(WAVE wave, float frequency, float sampleRate);
 
-void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
+float cb_buff_in[2][48];
+float cb_buff_out[2][48];
+bool fill = false;
+
+void PreCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)
+{
+	// memcpy(cb_buff_in[0], in[0], size * sizeof(cb_buff_in[0][0]));
+	// memcpy(cb_buff_in[1], in[1], size * sizeof(cb_buff_in[1][0]));
+	// memcpy(out[0], cb_buff_out[0], size * sizeof(cb_buff_out[0][0]));
+	// memcpy(out[1], cb_buff_out[1], size * sizeof(cb_buff_out[1][0]));
+
+	for (size_t i = 0; i < size; i++)
+	{
+		cb_buff_in[0][i] = in[0][i];
+		cb_buff_in[1][i] = in[1][i];
+		out[0][i] = cb_buff_out[0][i];
+		out[1][i] = cb_buff_out[1][i];
+	}
+	fill = true;
+}
+
+void AudioCallback(float in[][48], float out[][48], size_t size)
 {
 
 	float data[size];
 	for (size_t i = 0; i < size; i++)
 	{
-		data[i] = SimpleWave(WAVE::SIN, 440, sampleRate);
+		data[i] = SimpleWave(WAVE::RECT, 440, sampleRate);
 	}
 
 	auto& fsig = analyzer.Process(data, size);
@@ -101,6 +123,7 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 	for (size_t i = 0; i < size; i++)
 	{
 		out[0][i] = data[i];
+		// out[1][i] = 0;
 		out[1][i] = spectral_out[i];
 	}
 
@@ -154,6 +177,8 @@ void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, s
 	// }
 }
 
+bool toggle = false;
+
 int main(void)
 {
 	hw.Configure();
@@ -162,10 +187,9 @@ int main(void)
 
 	// hw.StopAudio();
 
-	hw.SetAudioBlockSize(32);
-	hw.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_16KHZ);
+	// hw.SetAudioBlockSize(32);
+	// hw.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_16KHZ);
 
-	
 	sampleRate = hw.AudioSampleRate();
 	size_t blockSize = hw.AudioBlockSize();
 
@@ -195,9 +219,16 @@ int main(void)
 	vocoder.Init(analyzer.GetFsig(), sampleRate, blockSize);
 	// vocoder.HaltOnError();
 
-	hw.StartAudio(AudioCallback);
-	while (1)
+	hw.StartAudio(PreCallback);
+	for (;;)
 	{
+		if (fill)
+		{
+			hw.SetLed(toggle);
+			toggle = !toggle;
+			fill = false;
+			AudioCallback(cb_buff_in, cb_buff_out, hw.AudioBlockSize());
+		}
 		// auto fsig = analyzer.ParallelProcess();
 		// auto fsig2 = fsig;
 
@@ -247,7 +278,7 @@ float SimpleWave(WAVE wave, float frequency, float sampleRate) {
 			break;
 		case WAVE::RECT:
 			{
-				for (int h = 0; h < 4; h++) {
+				for (int h = 0; h < 8; h++) {
 					float harm = h * 2 + 1;
 					out += sin(TWOPI_F * freq * harm * t) / harm;
 				}

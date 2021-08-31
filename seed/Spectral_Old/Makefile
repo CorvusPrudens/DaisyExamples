@@ -9,7 +9,7 @@ LIBDAISY_DIR = ../../libdaisy
 # DAISYSP_DIR = ../../DaisySP
 DAICSP_DIR = ../../DaisySP-LGPL
 
-OPT = -O3
+OPT = -O0
 
 C_INCLUDES += -I../../DaisySP-LGPL/Source
 LIBS += -ldaicsp
