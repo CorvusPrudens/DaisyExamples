@@ -45,6 +45,7 @@ int main(void)
     failcnt = 0;
 
     // Init hardware
+    hw.Configure();
     hw.Init();
 
     // Init SD Card
