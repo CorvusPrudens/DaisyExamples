@@ -11,10 +11,10 @@ usage = {
     'operation': 'Keyword argument for the desired helper action. Can be any of the following: create, copy, update, rebuild_all.',
     'destination': 'Second positional argument to set where the action should be applied. This is the final destination of the project.',
     'source': 'optional argument for selecting the project to copy from. required for the copy operation.',
-    'board': 'optional argument for selecting the template when using the create operation. Default is seed. Options are: seed, field, patch, petal, pod, versio',
+    'board': 'optional argument for selecting the template when using the create operation. Default is seed. Options are: seed, field, patch, petal, pod, versio, patch_sm',
     'libs': 'optional argument for specifying the path containing libDaisy and DaisySP. Used with create and update. Default is ./ .'
 }
-supported_boards= ['seed', 'pod', 'patch', 'field', 'petal', 'versio']
+supported_boards= ['seed', 'pod', 'patch', 'field', 'petal', 'versio', 'patch_sm']
 
 ################################################################
 # Helper functions
@@ -150,7 +150,7 @@ def create_from_template(destination, board, libs):
     libs = pathlib.Path(os.path.relpath(libs, destination)).as_posix()
     file_path = pathlib.Path(__file__).as_posix().replace('helper.py', '')
 
-    template_dir = file_path + '/utils/Template'
+    template_dir = os.path.join(file_path, 'utils', 'Template')
     copy_project(destination, template_dir)
 
     libdaisy_dir = libs + "/libdaisy/"
@@ -186,21 +186,37 @@ def create_from_template(destination, board, libs):
         audio_channels = 4
     else:
         audio_channels  = 2
+
+    board_class_names = {
+        'seed': "DaisySeed",
+        'field': "DaisyField",
+        'pod': "DaisyPod",
+        'patch': "DaisyPatch",
+        'patch_sm': "DaisyPatchSM",
+        'petal': "DaisyPetal",
+        'versio': 'DaisyVersio'
+    }
     # Rewrite  Source file
     with open(src_file, 'w') as f:
         f.write('#include "daisy_{}.h"\n'.format(board))
         f.write('#include "daisysp.h"\n\n') # extra line below
         f.write('using namespace daisy;\n')
+        if board == 'patch_sm':
+            f.write('using namespace patch_sm;\n') # extra line below
         f.write('using namespace daisysp;\n\n') # extra line below
-        f.write('Daisy{} hw;\n'.format(board.capitalize()))
+        f.write('{} hw;\n\n'.format(board_class_names.get(board)))
         f.write('void AudioCallback(AudioHandle::InputBuffer in, AudioHandle::OutputBuffer out, size_t size)\n')
         f.write('{\n')
         if controls:
             f.write('\thw.ProcessAllControls();\n')
         f.write('\tfor (size_t i = 0; i < size; i++)\n')
         f.write('\t{\n')
-        for i in range(0, audio_channels):
-            f.write('\t\tout[{}][i] = in[{}][i];\n'.format(i, i))
+        if board == 'patch_sm':
+            f.write('\t\tOUT_L[i] = IN_L[i];\n')
+            f.write('\t\tOUT_R[i] = IN_R[i];\n')
+        else:
+            for i in range(0, audio_channels):
+                f.write('\t\tout[{}][i] = in[{}][i];\n'.format(i, i))
         f.write('\t}\n')
         f.write('}\n\n') # extra line  before main
         f.write('int main(void)\n')
@@ -208,7 +224,7 @@ def create_from_template(destination, board, libs):
         if need_configure:
             f.write('\thw.Configure();\n')
         f.write('\thw.Init();\n')
-        if board != "seed":
+        if board != "seed" and board != "patch_sm":
             f.write('\thw.StartAdc();\n')
         f.write('\thw.StartAudio(AudioCallback);\n')
         f.write('\twhile(1) {}\n')
